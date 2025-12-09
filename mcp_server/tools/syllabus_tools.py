@@ -1,17 +1,14 @@
-# mcp_server/tools/syllabus_tools.py
+from services.syllabus_service import SyllabusService
+
+service = SyllabusService()
 
 def parse_syllabus(args):
-    text = args.get("text", "")
-    
-    # Mock parsing for now (we will replace with actual parser)
-    topics = ["Introduction", "Module 1", "Module 2"]
-
-    return {
-        "topics": topics,
-        "raw_text_length": len(text)
-    }
+    pdf_text = args.get("text", "")
+    cleaned = service.clean_text(pdf_text)
+    topics = service.extract_topics(cleaned)
+    return {"topics": topics}
 
 SCHEMA = {
     "input": {"text": "string"},
-    "output": {"topics": "list", "raw_text_length": "number"}
+    "output": {"topics": "list"}
 }

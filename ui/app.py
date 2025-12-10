@@ -100,8 +100,9 @@ with tab5:
             for name in names:
                 mastery = float(topics.get(name, {}).get("mastery", 0))
                 st.write(f"{name} — {int(mastery)}% mastery")
-                if st.button("Review This Topic", key=f"review_{name}"):
-                    st.info(f"Starting review for: {name}")
+                if st.button(f"Review {name}", key=f"review_{name}"):
+                    st.session_state["selected_topic"] = name
+                    st.switch_page("Review")
         else:
             st.info("No weak topics found.")
     except Exception as e:

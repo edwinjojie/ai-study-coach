@@ -3,13 +3,15 @@ import sys
 import pathlib
 import streamlit as st
 import pandas as pd
-from ui.mcp_client import MCPClient
 
 # Ensure project root is available so sibling packages import in Streamlit
+# Logic: file is at ui/app.py, parents[1] is root
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+# Now imports from 'ui' and 'services' will work
+from ui.mcp_client import MCPClient
 from services.syllabus_service import SyllabusService
 
 client = MCPClient()
@@ -50,19 +52,63 @@ with tab2:
 
 with tab3:
     topics = st.session_state.get("topics", [])
-    days = st.selectbox("Plan duration", [30, 60, 90])
+    # If no topics in session, try getting from knowledge graph if available
+    if not topics:
+         try:
+            res = client.call_tool("knowledge.get_graph", {"student_id": "user_1"})
+            g = res.get("graph", {}).get("topics", {})
+            topics = list(g.keys())
+         except:
+            pass
+
+    days = st.selectbox("Plan duration (days)", [3, 7, 14, 30], index=1)
+    
     if st.button("Generate Study Plan"):
-        plan_rows = []
-        if topics:
-            n = len(topics)
-            for i, t in enumerate(topics):
-                day_index = int(i * days / max(1, n))
-                plan_rows.append({"Day": day_index + 1, "Topic": t})
-            df = pd.DataFrame(plan_rows).sort_values("Day").reset_index(drop=True)
-            st.subheader("Study Plan")
-            st.dataframe(df, use_container_width=True)
+        if not topics:
+            st.warning("No topics found. Please upload a syllabus or ensure knowledge graph is populated.")
         else:
-            st.info("No topics available. Upload a syllabus first.")
+            with st.spinner("Consulting LLM for personalized plan..."):
+                # Get current mastery
+                try:
+                    res = client.call_tool("knowledge.get_graph", {"student_id": "user_1"})
+                    graph_topics = res.get("graph", {}).get("topics", {})
+                    # Simplify state to topic->mastery map
+                    student_state = {t: data.get("mastery", 0) for t, data in graph_topics.items()}
+                except:
+                    student_state = {}
+
+                plan_response = client.call_tool("llm.studyplan", {
+                    "topics": topics, 
+                    "days": days, 
+                    "student_state": student_state
+                })
+                
+                # Store
+                if "plan" in plan_response:
+                    st.session_state["generated_plan"] = plan_response
+                else:
+                    st.error(f"Error generating plan: {plan_response.get('_raw', 'Unknown error')}")
+
+    if "generated_plan" in st.session_state:
+        plan_data = st.session_state["generated_plan"]
+        st.subheader("Personalized Plan Summary")
+        st.write(plan_data.get("plan_text", ""))
+        
+        # Build DataFrame
+        plan_list = plan_data.get("plan", [])
+        if plan_list:
+            display_rows = []
+            for day_obj in plan_list:
+                d = day_obj.get("day", 0)
+                tasks = day_obj.get("tasks", [])
+                # If tasks is list of strings
+                if isinstance(tasks, list):
+                    for t in tasks:
+                        display_rows.append({"Day": d, "Task": t})
+            
+            if display_rows:
+                df = pd.DataFrame(display_rows)
+                st.dataframe(df, use_container_width=True)
 
 with tab4:
     try:

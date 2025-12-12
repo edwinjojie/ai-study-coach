@@ -61,3 +61,5 @@ def test_pdf(payload: dict):
     cleaned = service.clean_text(text)
     topics = service.extract_topics(cleaned)
     return {"cleaned": cleaned, "topics": topics}
+
+# Trigger reload
